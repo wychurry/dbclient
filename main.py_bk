@@ -1,0 +1,154 @@
+import sys
+from time import time
+
+from PyQt5.QtWidgets import QTreeView, QTableWidget, \
+    QHBoxLayout, QWidget, QAction, QMainWindow, \
+    QTabWidget, QSplitter, QApplication
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QStandardItem, QStandardItemModel
+from icon import icon_font
+import pymysql
+
+
+class StandardItemModel(QStandardItemModel):
+    ExpandableRole = Qt.UserRole + 500
+
+    def hasChildren(self, index):
+        if self.data(index, StandardItemModel.ExpandableRole):
+            return True
+        return super(StandardItemModel, self).hasChildren(index)
+
+
+class DBWorkSpace(QWidget):
+
+    def __init__(self, ):
+        self.db_icon = icon_font.icon('database')
+        self.table_icon = icon_font.icon('table')
+        super(QWidget, self).__init__()
+        hbox = QHBoxLayout()
+        nav_space = QTreeView()
+        nav_space.setColumnHidden(0, True)
+        data_space = QTableWidget()
+        self.model = StandardItemModel(nav_space)
+        nav_space.setModel(self.model)
+        nav_space.expanded.connect(self.show_tables)
+
+        self.connection = pymysql.connect(host='localhost',
+                                     user='admin',
+                                     password='123456',
+                                     charset='utf8mb4',
+                                     cursorclass=pymysql.cursors.DictCursor)
+
+        with self.connection.cursor() as cursor:
+            cursor.execute('show databases')
+            res = cursor.fetchall()
+
+        for i in res:
+            item = QStandardItem(i.get('Database'))
+            item.setData(True, StandardItemModel.ExpandableRole)
+            item.setEditable(False)
+            item.setIcon(self.db_icon)
+            self.model.appendRow(item)
+
+        splitter = QSplitter()
+        splitter.addWidget(nav_space)
+        splitter.addWidget(data_space)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([200, 550])
+
+        hbox.addWidget(splitter)
+        hbox.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(hbox)
+
+    def show_tables(self, index):
+        db_item = self.model.itemFromIndex(index)
+        db_name = db_item.text()
+        with self.connection.cursor() as cursor:
+            cursor.execute('show table status from ' + db_name)
+            res = cursor.fetchall()
+
+        for r in res:
+            table_item = QStandardItem(r.get('Name'))
+            table_item.setData("this is a child", Qt.ToolTipRole)
+            table_item.setIcon(self.table_icon)
+            db_item.appendRow(table_item)
+
+    def __del__(self):
+        self.connection.close()
+
+
+class MainWin(QMainWindow):
+
+    def __init__(self):
+        super(QMainWindow, self).__init__()
+        self.setWindowTitle("title")
+
+        self.tab = QTabWidget()
+        self.tab.setTabsClosable(True)
+
+        self.setCentralWidget(self.tab)
+
+        self.statusBar().showMessage('Ready')
+        fa5_icon = icon_font.icon('flag', color='blue')
+        file_menu = self.menuBar().addMenu('&File')
+        open_action = QAction(fa5_icon, 'Open', self)
+        open_action.triggered.connect(self.open_new)
+        file_menu.addAction(open_action)
+        self.tab.tabCloseRequested.connect(self.close_handler)
+        # db = QSqlDatabase.addDatabase('QMYSQL3')
+        # db.setHostName('127.0.0.1')
+        # db.setUserName('admin')
+        # db.setPassword('123456')
+        # ok = db.open()
+        # query = db.exec('show databases')
+        # rec = query.record()
+        # print(rec)
+        # print(query)
+        # while query.next():
+        #     print('--')
+        #     print(query.value(0))
+
+    def close_handler(self, index):
+        print(index)
+        self.tab.widget(index).deleteLater()
+        # self.tab.removeTab(index)
+
+    def open_new(self):
+        wp = DBWorkSpace()
+        icon = icon_font.icon('server')
+        index = self.tab.addTab(wp, str(time()))
+        self.tab.setTabIcon(index, icon)
+
+
+def except_hook(cls, exception, traceback):
+    sys.__excepthook__(cls, exception, traceback)
+
+
+if __name__ == '__main__':
+    import sys
+    sys.excepthook = except_hook
+    app = QApplication(sys.argv)
+    main_win = MainWin()
+    # main_win.setStyle(QStyleFactory.create("macintosh"))
+    main_win.resize(900, 600)
+    # main_win.showMaximized()
+    main_win.show()
+    app.setStyleSheet('''
+    QTabBar::tab { 
+        height: 40px; 
+        min-width: 100px;
+        padding-left: 20px;
+        border-top-left-radius: 50%;
+        border: 1px solid #C4C4C3;
+        border-top-right-radius: 50%;
+        border-bottom: 1px solid #fff;
+        background-color: #ccc;
+    }
+    # QTabBar::tab::selected {
+    #     background-color: #fff;
+    # }
+    QTreeWidget{
+        border: none;
+    }
+    ''')
+    sys.exit(app.exec_())
